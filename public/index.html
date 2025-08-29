@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Marimba Loop Trainer (YouTube + Editor + JSON – Estable)</title>
+  <title>Marimba Loop Trainer (YouTube + Editor + JSON en servidor)</title>
   <style>
     :root{--bg:#0f172a;--panel:#111827;--muted:#334155;--text:#e5e7eb;--accent:#22c55e;--accent2:#38bdf8}
     *{box-sizing:border-box}
@@ -49,7 +49,7 @@
 <body>
 <header>
   <h1 style="margin:0;font-size:20px;display:flex;gap:10px;align-items:center">
-    🎼 Marimba Loop Trainer – YouTube + Editor <span class="hint">• Lista, búsqueda, secciones, bucle, velocidad y guardado JSON</span>
+    🎼 Marimba Loop Trainer – YouTube + Editor <span class="hint">• JSON en servidor si hay API, o local si no</span>
   </h1>
 </header>
 
@@ -71,12 +71,12 @@
       <button class="btn" id="exportLib">⬇️ Exportar JSON</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" />
       <button class="btn" id="importLib">⬆️ Importar JSON</button>
-      <span class="hint" id="saveHint">(no guardado)</span>
+      <span class="hint" id="saveHint">modo: detectando…</span>
     </div>
 
     <div class="list" id="songList"></div>
 
-    <div class="hint">Atajos: <span class="kbd">K</span> play/pausa, <span class="kbd">L</span> bucle. Se guarda en este navegador y también puedes exportar a .json.</div>
+    <div class="hint">Atajos: <span class="kbd">K</span> play/pausa, <span class="kbd">L</span> bucle. Si hay backend, guarda en <code>library.json</code> junto a la página.</div>
   </section>
 
   <!-- RIGHT: player + editor + parts -->
@@ -134,6 +134,10 @@
   'use strict';
 
   var STORAGE_KEY = 'marimbaLoopTrainerLibraryV1';
+  var LIB_FILE = 'library.json'; // se sirve junto a la página
+  var API_SAVE = '/api/library';  // endpoint para guardar en disco
+
+  var persistenceMode = 'detect'; // 'server' | 'local'
   var SONGS = [
     { id:'son-chapin', title:'Son Chapín – Marimba (demo)', artist:'Tradicional', youtubeId:'5qap5aO4i9A', parts:[ {name:'Introducción',start:5,end:20},{name:'Parte 1 (Melodía A)',start:20,end:40},{name:'Parte 2 (Respuesta)',start:40,end:60} ] },
     { id:'marimba-demo', title:'Marimba Guatemala (demo)', artist:'Demo', youtubeId:'ysz5S6PUM-U', parts:[ {name:'Intro',start:0,end:12},{name:'Tema',start:12,end:28},{name:'Cierre',start:28,end:44} ] }
@@ -156,18 +160,56 @@
   function fmtTime(seconds){
     var s = Math.max(0, Math.floor(seconds||0));
     var m = Math.floor(s/60);
-    var sec = String(s%60);
-    if(sec.length<2) sec = '0'+sec;
-    return m+':'+sec;
+    var sec = String(s%60); if(sec.length<2) sec='0'+sec; return m+':'+sec;
   }
   function uid(prefix){ prefix=prefix||'id'; return prefix+'-'+Math.random().toString(36).slice(2,8); }
 
-  function loadLibrary(){
-    try{ var raw = localStorage.getItem(STORAGE_KEY); if(!raw) return; var arr = JSON.parse(raw); if(arr && arr.length){ SONGS = arr; } }catch(e){}
+  async function fetchJSON(url){
+    var r = await fetch(url, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
   }
-  function saveLibrary(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SONGS)); els.saveHint.textContent='✔ guardado'; }catch(e){ alert('No se pudo guardar en localStorage'); } }
-  function exportLibrary(){ var json=JSON.stringify(SONGS,null,2); var blob=new Blob([json],{type:'application/json'}); var a=document.createElement('a'); var stamp=new Date().toISOString().slice(0,10).replace(/-/g,''); a.href=URL.createObjectURL(blob); a.download='marimba_library_'+stamp+'.json'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },0); }
-  function importLibrary(file){ var r=new FileReader(); r.onload=function(){ try{ var data=JSON.parse(r.result); if(!(data&&data.length)) throw new Error('JSON vacío'); SONGS=data; saveLibrary(); renderList(els.q.value); if(SONGS[0]) selectSong(SONGS[0].id); }catch(err){ alert('Error al importar: '+err.message); } }; r.readAsText(file); }
+  async function putJSON(url, data){
+    var r = await fetch(url, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.text();
+  }
+
+  function loadLibraryLocal(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY); if(!raw) return false;
+      var arr = JSON.parse(raw); if(arr && arr.length){ SONGS = arr; return true; }
+    }catch(e){}
+    return false;
+  }
+  function saveLibraryLocal(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SONGS)); setHint('modo: local (guardado)'); }catch(e){ alert('No se pudo guardar en localStorage'); } }
+
+  async function tryServerMode(){
+    try{
+      var data = await fetchJSON(LIB_FILE); // intenta leer library.json junto a la página
+      if(Array.isArray(data) && data.length){ SONGS = data; }
+      persistenceMode = 'server'; setHint('modo: servidor');
+    }catch(err){
+      persistenceMode = 'local'; setHint('modo: local');
+      loadLibraryLocal();
+    }
+    renderList(''); if(SONGS[0]) selectSong(SONGS[0].id);
+  }
+
+  async function saveLibrary(){
+    if(persistenceMode==='server'){
+      try{ await putJSON(API_SAVE, SONGS); setHint('modo: servidor (guardado)'); }
+      catch(e){ alert('No se pudo guardar en servidor. Se intentará guardar local.'); saveLibraryLocal(); }
+    } else {
+      saveLibraryLocal();
+    }
+  }
+
+  function exportLibrary(){ var json=JSON.stringify(SONGS,null,2); var blob=new Blob([json],{type:'application/json'}); var a=document.createElement('a'); var stamp=new Date().toISOString().slice(0,10).replace(/-/g,''); a.href=URL.createObjectURL(blob); a.download='library_'+stamp+'.json'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },0); }
+  function importLibrary(file){ var r=new FileReader(); r.onload=function(){ try{ var data=JSON.parse(r.result); if(!(data&&data.length)) throw new Error('JSON vacío'); SONGS=data; setUnsaved(); renderList(els.q.value); if(SONGS[0]) selectSong(SONGS[0].id); }catch(err){ alert('Error al importar: '+err.message); } }; r.readAsText(file); }
+
+  function setUnsaved(){ els.saveHint.textContent += ' • cambios sin guardar'; }
+  function setHint(t){ els.saveHint.textContent = t; }
 
   var currentSong=null, currentPart=null, player=null, timeTicker=null;
 
@@ -200,6 +242,7 @@
     addPart:document.getElementById('addPart')
   };
 
+  // ==== YouTube IFrame API ====
   window.onYouTubeIframeAPIReady = function(){
     player = new YT.Player('player', {
       height:'100%', width:'100%', videoId:(SONGS[0]||{}).youtubeId,
@@ -207,13 +250,10 @@
       events:{ onReady:onPlayerReady, onStateChange:onPlayerState }
     });
   };
-
   function onPlayerReady(){
     try{ var iframe = player.getIframe && player.getIframe(); if(iframe) iframe.setAttribute('allow','autoplay; encrypted-media; picture-in-picture'); }catch(e){}
     populateRates();
-    loadLibrary();
-    renderList('');
-    if(SONGS[0]) selectSong(SONGS[0].id); else els.parts.innerHTML = '<div class="muted">Agrega un video de YouTube a la izquierda.</div>';
+    tryServerMode();
     startTicker();
   }
   function onPlayerState(){ populateRates(); }
@@ -292,7 +332,7 @@
         var delBtn=document.createElement('button'); delBtn.className='btn warn'; delBtn.title='Eliminar'; delBtn.textContent='🗑️';
         playBtn.addEventListener('click', function(){ currentPart={start:p.start,end:p.end}; loadById(currentSong.youtubeId,p.start); updateLoopRange(); });
         loopBtn.addEventListener('click', function(){ currentPart={start:p.start,end:p.end}; els.loop.checked=true; loadById(currentSong.youtubeId,p.start); updateLoopRange(); });
-        delBtn.addEventListener('click', function(){ if(confirm('¿Eliminar esta parte?')){ currentSong.parts.splice(idx,1); markUnsaved(); renderParts(); } });
+        delBtn.addEventListener('click', function(){ if(confirm('¿Eliminar esta parte?')){ currentSong.parts.splice(idx,1); setUnsaved(); renderParts(); } });
         row.appendChild(tag); row.appendChild(info); row.appendChild(playBtn); row.appendChild(loopBtn); row.appendChild(delBtn);
         els.parts.appendChild(row);
       })(i);
@@ -300,14 +340,12 @@
   }
 
   function selectSong(id){
-    for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id){ currentSong=SONGS[i]; break; }
+    currentSong=null; for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id){ currentSong=SONGS[i]; break; }
     if(!currentSong) return;
     currentPart=null; cueById(currentSong.youtubeId,0); els.loop.checked=false; updateLoopRange(); renderList(els.q.value); renderParts();
   }
 
   function updateLoopRange(){ if(els.loop.checked && currentPart){ els.loopRange.textContent='Bucle: '+fmtTime(currentPart.start)+' → '+fmtTime(currentPart.end); } else { els.loopRange.textContent='(—)'; } }
-
-  function markUnsaved(){ els.saveHint.textContent='(cambios sin guardar)'; }
 
   // Eventos
   els.q.addEventListener('input', function(){ renderList(els.q.value); });
@@ -318,17 +356,17 @@
   els.fwd5.addEventListener('click', function(){ try{ player.seekTo(player.getCurrentTime()+5, true); }catch(e){} });
   els.playPause.addEventListener('click', function(){ try{ var st=player.getPlayerState(); if(st===YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo(); }catch(e){} });
 
-  els.saveLib.addEventListener('click', saveLibrary);
-  els.exportLib.addEventListener('click', exportLibrary);
+  els.saveLib.addEventListener('click', function(){ saveLibrary(); });
+  els.exportLib.addEventListener('click', function(){ exportLibrary(); });
   els.importLib.addEventListener('click', function(){ els.importFile.click(); });
   els.importFile.addEventListener('change', function(e){ var f=e.target.files[0]; if(f) importLibrary(f); e.target.value=''; });
 
-  els.saveMeta.addEventListener('click', function(){ if(!currentSong) return; currentSong.title=els.songTitle.value.trim()||currentSong.title; currentSong.artist=els.songArtist.value.trim(); markUnsaved(); renderList(els.q.value); renderParts(); });
+  els.saveMeta.addEventListener('click', function(){ if(!currentSong) return; currentSong.title=els.songTitle.value.trim()||currentSong.title; currentSong.artist=els.songArtist.value.trim(); setUnsaved(); renderList(els.q.value); renderParts(); });
   els.setStart.addEventListener('click', function(){ try{ els.partStart.value = player.getCurrentTime().toFixed(2); }catch(e){} });
   els.setEnd.addEventListener('click', function(){ try{ els.partEnd.value = player.getCurrentTime().toFixed(2); }catch(e){} });
-  els.addPart.addEventListener('click', function(){ if(!currentSong) return; var name=els.partName.value.trim()||('Sección '+(((currentSong.parts||[]).length)+1)); var start=parseFloat(els.partStart.value); var end=parseFloat(els.partEnd.value); if(!isFinite(start)||!isFinite(end)){ alert('Debes indicar inicio y fin.'); return; } if(end<=start){ alert('El fin debe ser mayor que el inicio.'); return; } currentSong.parts=currentSong.parts||[]; currentSong.parts.push({name:name,start:start,end:end}); els.partName.value=''; els.partStart.value=''; els.partEnd.value=''; markUnsaved(); renderParts(); });
+  els.addPart.addEventListener('click', function(){ if(!currentSong) return; var name=els.partName.value.trim()||('Sección '+(((currentSong.parts||[]).length)+1)); var start=parseFloat(els.partStart.value); var end=parseFloat(els.partEnd.value); if(!isFinite(start)||!isFinite(end)){ alert('Debes indicar inicio y fin.'); return; } if(end<=start){ alert('El fin debe ser mayor que el inicio.'); return; } currentSong.parts=currentSong.parts||[]; currentSong.parts.push({name:name,start:start,end:end}); els.partName.value=''; els.partStart.value=''; els.partEnd.value=''; setUnsaved(); renderParts(); });
 
-  els.addFromUrl.addEventListener('click', function(){ var raw=(els.ytUrl.value||'').trim(); if(!raw) return; var id=extractYouTubeId(raw); if(!id){ alert('No pude reconocer un enlace/ID válido de YouTube.'); return; } var obj={ id:uid('yt'), title:'YouTube '+id, artist:'', youtubeId:id, parts:[] }; SONGS.unshift(obj); els.ytUrl.value=''; markUnsaved(); renderList(els.q.value); selectSong(obj.id); });
+  els.addFromUrl.addEventListener('click', function(){ var raw=(els.ytUrl.value||'').trim(); if(!raw) return; var id=extractYouTubeId(raw); if(!id){ alert('No pude reconocer un enlace/ID válido de YouTube.'); return; } var obj={ id:uid('yt'), title:'YouTube '+id, artist:'', youtubeId:id, parts:[] }; SONGS.unshift(obj); els.ytUrl.value=''; setUnsaved(); renderList(els.q.value); selectSong(obj.id); });
 
   window.addEventListener('keydown', function(e){ if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')) return; var k=(e.key||'').toLowerCase(); if(k==='k'){ els.playPause.click(); } if(k==='l'){ els.loop.checked=!els.loop.checked; updateLoopRange(); } });
 
