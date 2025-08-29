@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marimba Loop Trainer (YouTube + Editor + JSON – Estable)</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#111827;--muted:#334155;--text:#e5e7eb;--accent:#22c55e;--accent2:#38bdf8}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Inter,Arial,sans-serif;background:linear-gradient(120deg,#0b1022,#131a33);color:var(--text)}
+    header{padding:16px 20px;border-bottom:1px solid #1f2937;backdrop-filter:saturate(1.2) blur(6px);position:sticky;top:0;background:rgba(17,24,39,.6)}
+    .wrap{display:grid;grid-template-columns: 360px 1fr;gap:16px;padding:16px;min-height:calc(100vh - 70px)}
+    @media (max-width: 1120px){.wrap{grid-template-columns:1fr}}
+    .card{background:rgba(17,24,39,.8);border:1px solid #1f2937;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .left{padding:14px;display:flex;flex-direction:column;gap:12px}
+    .search{display:flex;gap:8px}
+    .search input{flex:1;padding:10px 12px;border-radius:12px;border:1px solid #243041;background:#0b1220;color:var(--text)}
+    .search button{padding:10px 12px;border-radius:12px;border:1px solid #1f2a44;background:#0e162a;color:#cbd5e1;cursor:pointer}
+    .list{display:flex;flex-direction:column;gap:6px;max-height:45vh;overflow:auto;padding-right:6px}
+    .song{padding:10px 12px;border-radius:12px;border:1px solid #1e293b;background:#0b1220;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+    .song small{color:#94a3b8}
+    .song.active{outline:2px solid var(--accent2);background:#0b1826}
+    .right{padding:14px;display:flex;flex-direction:column;gap:12px}
+    .player{padding:12px;display:grid;gap:12px}
+    .ytwrap{position:relative;width:100%;padding-top:56.25%;background:#000;border-radius:14px;border:1px solid #1f2937;overflow:hidden}
+    #player{position:absolute;inset:0}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+    .controls .group{display:flex;gap:8px;align-items:center}
+    .pill{padding:6px 10px;border:1px solid #1f2937;border-radius:999px;background:#0b1220}
+    .btn{padding:8px 12px;border-radius:10px;border:1px solid #243041;background:#0e162a;color:#e5e7eb;cursor:pointer}
+    .btn.primary{border-color:#0e5130;background:linear-gradient(180deg,#094b2a,#0c3b28)}
+    .btn.warn{border-color:#5b1b1b;background:linear-gradient(180deg,#3b0c0c,#2a0b0b)}
+    .parts{display:grid;gap:8px}
+    .part{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #1f2937;border-radius:12px;background:#0b1220}
+    .part .tag{font-size:12px;padding:4px 8px;border-radius:999px;background:#0b1f2e;border:1px solid #18324a;color:#bae6fd}
+    .part .meta{font-size:12px;color:#94a3b8}
+    .part button{margin-left:auto}
+    .muted{color:#9aa5b1}
+    .hint{font-size:12px;color:#94a3b8}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width: 760px){.grid{grid-template-columns:1fr}}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;background:#0b1220;border:1px solid #1f2937;border-bottom-width:3px;padding:2px 6px;border-radius:6px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .row input[type="text"], .row input[type="number"], .row input[type="url"]{padding:8px 10px;border-radius:10px;border:1px solid #243041;background:#0b1220;color:var(--text)}
+    .section{border:1px dashed #244; border-radius:12px; padding:12px; background:#0b1220}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+<header>
+  <h1 style="margin:0;font-size:20px;display:flex;gap:10px;align-items:center">
+    🎼 Marimba Loop Trainer – YouTube + Editor <span class="hint">• Lista, búsqueda, secciones, bucle, velocidad y guardado JSON</span>
+  </h1>
+</header>
+
+<main class="wrap">
+  <!-- LEFT: search + song list + io -->
+  <section class="card left">
+    <div class="search">
+      <input id="q" type="search" placeholder="Buscar canción o parte… (ej. 'Introducción' o 'Son')" />
+      <button id="clearBtn">Limpiar</button>
+    </div>
+
+    <div class="row">
+      <input id="ytUrl" type="url" placeholder="Pega un enlace de YouTube (opcional)" style="flex:1" />
+      <button class="btn" id="addFromUrl">Agregar</button>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn" id="saveLib">💾 Guardar</button>
+      <button class="btn" id="exportLib">⬇️ Exportar JSON</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+      <button class="btn" id="importLib">⬆️ Importar JSON</button>
+      <span class="hint" id="saveHint">(no guardado)</span>
+    </div>
+
+    <div class="list" id="songList"></div>
+
+    <div class="hint">Atajos: <span class="kbd">K</span> play/pausa, <span class="kbd">L</span> bucle. Se guarda en este navegador y también puedes exportar a .json.</div>
+  </section>
+
+  <!-- RIGHT: player + editor + parts -->
+  <section class="card right">
+    <div class="player">
+      <div class="ytwrap"><div id="player"></div></div>
+      <div class="controls">
+        <div class="group">
+          <button class="btn" id="back5">⏪ −5s</button>
+          <button class="btn" id="playPause">⏯️ Reproducir</button>
+          <button class="btn" id="fwd5">⏩ +5s</button>
+        </div>
+        <div class="group pill">
+          <label for="speed">Velocidad</label>
+          <select id="speed"><option>1</option></select>
+        </div>
+        <div class="group pill">
+          <label><input type="checkbox" id="loop" /> Bucle sección</label>
+          <span class="muted" id="loopRange">(—)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="row" style="margin-bottom:8px">
+        <strong>Metadatos de canción</strong>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <input id="songTitle" type="text" placeholder="Título" style="flex:1" />
+        <input id="songArtist" type="text" placeholder="Artista (opcional)" style="flex:1" />
+        <button class="btn" id="saveMeta">Guardar meta</button>
+      </div>
+      <div class="row" style="margin:8px 0 4px 0"><strong>Editor de secciones</strong></div>
+      <div class="row">
+        <input id="partName" type="text" placeholder="Nombre de la parte (ej. 'Introducción')" style="flex:1" />
+      </div>
+      <div class="row">
+        <input id="partStart" type="number" step="0.01" placeholder="Inicio (s)" />
+        <button class="btn" id="setStart">⌚ Tomar inicio</button>
+        <input id="partEnd" type="number" step="0.01" placeholder="Fin (s)" />
+        <button class="btn" id="setEnd">⌛ Tomar fin</button>
+        <button class="btn primary" id="addPart">➕ Agregar parte</button>
+      </div>
+      <div class="hint">Consejo: Pon el video donde quieras y usa “Tomar inicio/fin”.</div>
+    </div>
+
+    <div class="parts" id="parts"></div>
+  </section>
+</main>
+
+<!-- YouTube IFrame API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+(function(){
+  'use strict';
+
+  var STORAGE_KEY = 'marimbaLoopTrainerLibraryV1';
+  var SONGS = [
+    { id:'son-chapin', title:'Son Chapín – Marimba (demo)', artist:'Tradicional', youtubeId:'5qap5aO4i9A', parts:[ {name:'Introducción',start:5,end:20},{name:'Parte 1 (Melodía A)',start:20,end:40},{name:'Parte 2 (Respuesta)',start:40,end:60} ] },
+    { id:'marimba-demo', title:'Marimba Guatemala (demo)', artist:'Demo', youtubeId:'ysz5S6PUM-U', parts:[ {name:'Intro',start:0,end:12},{name:'Tema',start:12,end:28},{name:'Cierre',start:28,end:44} ] }
+  ];
+
+  function extractYouTubeId(input){
+    try{
+      var s = String(input).trim();
+      if(/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+      var u = new URL(s);
+      if(u.hostname==='youtu.be') return u.pathname.slice(1);
+      var v = u.searchParams.get('v');
+      if(v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+      var parts = u.pathname.split('/');
+      for(var i=0;i<parts.length;i++) if(parts[i]==='shorts'||parts[i]==='embed') return parts[i+1]||null;
+    }catch(e){}
+    return null;
+  }
+
+  function fmtTime(seconds){
+    var s = Math.max(0, Math.floor(seconds||0));
+    var m = Math.floor(s/60);
+    var sec = String(s%60);
+    if(sec.length<2) sec = '0'+sec;
+    return m+':'+sec;
+  }
+  function uid(prefix){ prefix=prefix||'id'; return prefix+'-'+Math.random().toString(36).slice(2,8); }
+
+  function loadLibrary(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); if(!raw) return; var arr = JSON.parse(raw); if(arr && arr.length){ SONGS = arr; } }catch(e){}
+  }
+  function saveLibrary(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SONGS)); els.saveHint.textContent='✔ guardado'; }catch(e){ alert('No se pudo guardar en localStorage'); } }
+  function exportLibrary(){ var json=JSON.stringify(SONGS,null,2); var blob=new Blob([json],{type:'application/json'}); var a=document.createElement('a'); var stamp=new Date().toISOString().slice(0,10).replace(/-/g,''); a.href=URL.createObjectURL(blob); a.download='marimba_library_'+stamp+'.json'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },0); }
+  function importLibrary(file){ var r=new FileReader(); r.onload=function(){ try{ var data=JSON.parse(r.result); if(!(data&&data.length)) throw new Error('JSON vacío'); SONGS=data; saveLibrary(); renderList(els.q.value); if(SONGS[0]) selectSong(SONGS[0].id); }catch(err){ alert('Error al importar: '+err.message); } }; r.readAsText(file); }
+
+  var currentSong=null, currentPart=null, player=null, timeTicker=null;
+
+  var els={
+    q:document.getElementById('q'),
+    clearBtn:document.getElementById('clearBtn'),
+    songList:document.getElementById('songList'),
+    parts:document.getElementById('parts'),
+    speed:document.getElementById('speed'),
+    loop:document.getElementById('loop'),
+    loopRange:document.getElementById('loopRange'),
+    back5:document.getElementById('back5'),
+    fwd5:document.getElementById('fwd5'),
+    playPause:document.getElementById('playPause'),
+    ytUrl:document.getElementById('ytUrl'),
+    addFromUrl:document.getElementById('addFromUrl'),
+    saveLib:document.getElementById('saveLib'),
+    exportLib:document.getElementById('exportLib'),
+    importLib:document.getElementById('importLib'),
+    importFile:document.getElementById('importFile'),
+    saveHint:document.getElementById('saveHint'),
+    songTitle:document.getElementById('songTitle'),
+    songArtist:document.getElementById('songArtist'),
+    saveMeta:document.getElementById('saveMeta'),
+    partName:document.getElementById('partName'),
+    partStart:document.getElementById('partStart'),
+    partEnd:document.getElementById('partEnd'),
+    setStart:document.getElementById('setStart'),
+    setEnd:document.getElementById('setEnd'),
+    addPart:document.getElementById('addPart')
+  };
+
+  window.onYouTubeIframeAPIReady = function(){
+    player = new YT.Player('player', {
+      height:'100%', width:'100%', videoId:(SONGS[0]||{}).youtubeId,
+      playerVars:{ rel:0, modestbranding:1, iv_load_policy:3, controls:1, disablekb:0, playsinline:1 },
+      events:{ onReady:onPlayerReady, onStateChange:onPlayerState }
+    });
+  };
+
+  function onPlayerReady(){
+    try{ var iframe = player.getIframe && player.getIframe(); if(iframe) iframe.setAttribute('allow','autoplay; encrypted-media; picture-in-picture'); }catch(e){}
+    populateRates();
+    loadLibrary();
+    renderList('');
+    if(SONGS[0]) selectSong(SONGS[0].id); else els.parts.innerHTML = '<div class="muted">Agrega un video de YouTube a la izquierda.</div>';
+    startTicker();
+  }
+  function onPlayerState(){ populateRates(); }
+
+  function populateRates(){
+    if(!player || typeof player.getAvailablePlaybackRates!=='function') return;
+    var rates = player.getAvailablePlaybackRates();
+    if(!rates||!rates.length) rates=[0.5,0.75,1,1.25,1.5,2];
+    rates = rates.sort(function(a,b){return a-b;});
+    var cur = (typeof player.getPlaybackRate==='function')? player.getPlaybackRate() : 1;
+    els.speed.innerHTML='';
+    for(var i=0;i<rates.length;i++){
+      var opt=document.createElement('option');
+      opt.value=String(rates[i]); opt.textContent=String(rates[i])+'×';
+      if(rates[i]===cur) opt.selected=true;
+      els.speed.appendChild(opt);
+    }
+  }
+
+  function cueById(videoId,start){ if(!player) return; player.cueVideoById({videoId:videoId,startSeconds:start||0}); }
+  function loadById(videoId,start){ if(!player) return; player.loadVideoById({videoId:videoId,startSeconds:start||0}); }
+
+  function startTicker(){
+    if(timeTicker) clearInterval(timeTicker);
+    timeTicker = setInterval(function(){
+      if(!els.loop.checked || !currentPart || !player || typeof player.getCurrentTime!=='function') return;
+      var t = player.getCurrentTime();
+      if(t >= currentPart.end){ player.seekTo(currentPart.start+0.05,true); player.playVideo(); }
+    }, 120);
+  }
+
+  function renderList(filter){
+    var q = (filter||'').toLowerCase().trim();
+    els.songList.innerHTML='';
+    var results = [];
+    for(var i=0;i<SONGS.length;i++){
+      var s = SONGS[i];
+      var ok = (s.title && s.title.toLowerCase().indexOf(q)>-1);
+      if(!ok && s.parts){ for(var j=0;j<s.parts.length;j++){ if(s.parts[j].name.toLowerCase().indexOf(q)>-1){ ok=true; break; } } }
+      if(ok) results.push(s);
+    }
+    if(results.length===0){ var div=document.createElement('div'); div.className='muted'; div.style.padding='8px'; div.textContent='Sin resultados.'; els.songList.appendChild(div); return; }
+    for(var k=0;k<results.length;k++){
+      (function(s){
+        var item=document.createElement('div'); item.className='song'+(currentSong&&currentSong.id===s.id?' active':'');
+        var left=document.createElement('div'); var title=document.createElement('div'); title.style.fontWeight='600'; title.textContent=s.title; var small=document.createElement('small'); small.textContent=s.artist||''; left.appendChild(title); left.appendChild(small);
+        var count=document.createElement('small'); count.textContent=(s.parts?s.parts.length:0)+' partes';
+        item.appendChild(left); item.appendChild(count);
+        item.addEventListener('click', function(){ selectSong(s.id); });
+        els.songList.appendChild(item);
+      })(results[k]);
+    }
+  }
+
+  function renderParts(){
+    els.parts.innerHTML='';
+    if(!currentSong){ var div=document.createElement('div'); div.className='muted'; div.textContent='Selecciona una canción a la izquierda.'; els.parts.appendChild(div); return; }
+
+    els.songTitle.value = currentSong.title||'';
+    els.songArtist.value = currentSong.artist||'';
+
+    var partsArr = currentSong.parts||[];
+    if(partsArr.length===0){ var empty=document.createElement('div'); empty.className='muted'; empty.textContent='Aún no hay partes. Usa el editor para agregar.'; els.parts.appendChild(empty); }
+
+    for(var i=0;i<partsArr.length;i++){
+      (function(idx){
+        var p = partsArr[idx];
+        var row=document.createElement('div'); row.className='part';
+        var tag=document.createElement('span'); tag.className='tag'; tag.textContent='Parte '+(idx+1);
+        var info=document.createElement('div');
+        var nameDiv=document.createElement('div'); nameDiv.style.fontWeight='600'; nameDiv.textContent=p.name;
+        var meta=document.createElement('div'); meta.className='meta'; meta.textContent=fmtTime(p.start)+' – '+fmtTime(p.end);
+        info.appendChild(nameDiv); info.appendChild(meta);
+        var playBtn=document.createElement('button'); playBtn.className='btn primary'; playBtn.textContent='Reproducir';
+        var loopBtn=document.createElement('button'); loopBtn.className='btn'; loopBtn.title='Bucle'; loopBtn.textContent='Bucle';
+        var delBtn=document.createElement('button'); delBtn.className='btn warn'; delBtn.title='Eliminar'; delBtn.textContent='🗑️';
+        playBtn.addEventListener('click', function(){ currentPart={start:p.start,end:p.end}; loadById(currentSong.youtubeId,p.start); updateLoopRange(); });
+        loopBtn.addEventListener('click', function(){ currentPart={start:p.start,end:p.end}; els.loop.checked=true; loadById(currentSong.youtubeId,p.start); updateLoopRange(); });
+        delBtn.addEventListener('click', function(){ if(confirm('¿Eliminar esta parte?')){ currentSong.parts.splice(idx,1); markUnsaved(); renderParts(); } });
+        row.appendChild(tag); row.appendChild(info); row.appendChild(playBtn); row.appendChild(loopBtn); row.appendChild(delBtn);
+        els.parts.appendChild(row);
+      })(i);
+    }
+  }
+
+  function selectSong(id){
+    for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id){ currentSong=SONGS[i]; break; }
+    if(!currentSong) return;
+    currentPart=null; cueById(currentSong.youtubeId,0); els.loop.checked=false; updateLoopRange(); renderList(els.q.value); renderParts();
+  }
+
+  function updateLoopRange(){ if(els.loop.checked && currentPart){ els.loopRange.textContent='Bucle: '+fmtTime(currentPart.start)+' → '+fmtTime(currentPart.end); } else { els.loopRange.textContent='(—)'; } }
+
+  function markUnsaved(){ els.saveHint.textContent='(cambios sin guardar)'; }
+
+  // Eventos
+  els.q.addEventListener('input', function(){ renderList(els.q.value); });
+  els.clearBtn.addEventListener('click', function(){ els.q.value=''; renderList(''); });
+  els.speed.addEventListener('change', function(){ var v=parseFloat(els.speed.value||'1'); try{ player.setPlaybackRate(v); }catch(e){} });
+  els.loop.addEventListener('change', updateLoopRange);
+  els.back5.addEventListener('click', function(){ try{ player.seekTo(Math.max(0, player.getCurrentTime()-5), true); }catch(e){} });
+  els.fwd5.addEventListener('click', function(){ try{ player.seekTo(player.getCurrentTime()+5, true); }catch(e){} });
+  els.playPause.addEventListener('click', function(){ try{ var st=player.getPlayerState(); if(st===YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo(); }catch(e){} });
+
+  els.saveLib.addEventListener('click', saveLibrary);
+  els.exportLib.addEventListener('click', exportLibrary);
+  els.importLib.addEventListener('click', function(){ els.importFile.click(); });
+  els.importFile.addEventListener('change', function(e){ var f=e.target.files[0]; if(f) importLibrary(f); e.target.value=''; });
+
+  els.saveMeta.addEventListener('click', function(){ if(!currentSong) return; currentSong.title=els.songTitle.value.trim()||currentSong.title; currentSong.artist=els.songArtist.value.trim(); markUnsaved(); renderList(els.q.value); renderParts(); });
+  els.setStart.addEventListener('click', function(){ try{ els.partStart.value = player.getCurrentTime().toFixed(2); }catch(e){} });
+  els.setEnd.addEventListener('click', function(){ try{ els.partEnd.value = player.getCurrentTime().toFixed(2); }catch(e){} });
+  els.addPart.addEventListener('click', function(){ if(!currentSong) return; var name=els.partName.value.trim()||('Sección '+(((currentSong.parts||[]).length)+1)); var start=parseFloat(els.partStart.value); var end=parseFloat(els.partEnd.value); if(!isFinite(start)||!isFinite(end)){ alert('Debes indicar inicio y fin.'); return; } if(end<=start){ alert('El fin debe ser mayor que el inicio.'); return; } currentSong.parts=currentSong.parts||[]; currentSong.parts.push({name:name,start:start,end:end}); els.partName.value=''; els.partStart.value=''; els.partEnd.value=''; markUnsaved(); renderParts(); });
+
+  els.addFromUrl.addEventListener('click', function(){ var raw=(els.ytUrl.value||'').trim(); if(!raw) return; var id=extractYouTubeId(raw); if(!id){ alert('No pude reconocer un enlace/ID válido de YouTube.'); return; } var obj={ id:uid('yt'), title:'YouTube '+id, artist:'', youtubeId:id, parts:[] }; SONGS.unshift(obj); els.ytUrl.value=''; markUnsaved(); renderList(els.q.value); selectSong(obj.id); });
+
+  window.addEventListener('keydown', function(e){ if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')) return; var k=(e.key||'').toLowerCase(); if(k==='k'){ els.playPause.click(); } if(k==='l'){ els.loop.checked=!els.loop.checked; updateLoopRange(); } });
+
+})();
+</script>
+</body>
+</html>
