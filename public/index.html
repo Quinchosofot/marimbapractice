@@ -137,8 +137,25 @@ var LIB_FILE = '/api/library';    // lectura desde el API que ya funciona
   var player = null;
   var timeTicker = null;
   var unsaved = false;
-
+var DATA_READY = false;
+var PLAYER_READY = false;
+var INITIAL_SONG_ID = null;
   /* ====== Utilidades ====== */
+  function maybeSelectInitial(){
+  if (PLAYER_READY && DATA_READY && INITIAL_SONG_ID){
+    selectSong(INITIAL_SONG_ID);
+    INITIAL_SONG_ID = null; // consumir una vez
+  }
+}
+
+function selectSong(id){
+  if(!PLAYER_READY){ INITIAL_SONG_ID = id; return; }  // ← espera al player
+  var s = null; for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id){ s=SONGS[i]; break; }
+  if(!s) return;
+  currentSong = s; currentPart = null; els.loop.checked = false; updateLoopRange();
+  cueById(currentSong.youtubeId, 0);
+  renderList(els.q.value); renderParts();
+}
   function extractYouTubeId(input){
     try{
       var s = String(input).trim();
@@ -181,41 +198,45 @@ var LIB_FILE = '/api/library';    // lectura desde el API que ya funciona
   };
 
   /* ====== Carga inicial desde el servidor ====== */
- window.addEventListener('DOMContentLoaded', function(){
-  console.log('Cargando desde', LIB_FILE);
-  fetch(LIB_FILE, { cache: 'no-store' })
-    .then(async function(r){
-      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
-      var data;
-      try { data = await r.json(); } catch(e) { data = []; } // si está vacío, iniciamos []
+window.addEventListener('DOMContentLoaded', function(){
+  fetch('/api/library', { cache: 'no-store' })
+    .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(data => {
       SONGS = Array.isArray(data) ? data : [];
+      DATA_READY = true;
+      INITIAL_SONG_ID = SONGS[0] ? SONGS[0].id : null;
       setHint('servidor');
       renderList('');
-      if (SONGS[0]) selectSong(SONGS[0].id);
+      maybeSelectInitial();  // ← NUEVO
     })
-    .catch(function(err){
-      // No mostrar alert: no bloqueamos la UI y arrancamos vacío
-      console.error('Error cargando', LIB_FILE, err);
+    .catch(err => {
+      console.error('Error cargando /api/library', err);
       SONGS = [];
+      DATA_READY = true;     // aún así, marcamos listo para no bloquear
       setHint('servidor (vacío)');
       renderList('');
+      maybeSelectInitial();  // ← NUEVO
     });
 });
 
   /* ====== YouTube API ====== */
-  window.onYouTubeIframeAPIReady = function(){
-    // Crea player con un video “dummy”; luego haremos cue al real al seleccionar canción
-    player = new YT.Player('player', {
-      height:'100%', width:'100%', videoId:'M7lc1UVf-VE',
-      playerVars:{ rel:0, modestbranding:1, iv_load_policy:3, controls:1, disablekb:0, playsinline:1 },
-      events:{ onReady:onPlayerReady, onStateChange:onPlayerState }
-    });
-  };
-  function onPlayerReady(){
-    try{ var iframe = player.getIframe && player.getIframe(); if(iframe) iframe.setAttribute('allow','autoplay; encrypted-media; picture-in-picture'); }catch(e){}
-    populateRates();
-    startTicker();
-  }
+ window.onYouTubeIframeAPIReady = function(){
+  player = new YT.Player('player', {
+    host: 'https://www.youtube.com',
+    height: '100%', width: '100%',
+    videoId: 'M7lc1UVf-VE',
+    playerVars: { origin: window.location.origin, enablejsapi: 1, rel:0, modestbranding:1, iv_load_policy:3, controls:1, disablekb:0, playsinline:1 },
+    events: { onReady: onPlayerReady, onStateChange: onPlayerState }
+  });
+};
+
+function onPlayerReady(){
+  PLAYER_READY = true;
+  try { var iframe = player.getIframe && player.getIframe(); if(iframe) iframe.setAttribute('allow','autoplay; encrypted-media; picture-in-picture'); } catch(e){}
+  populateRates();
+  startTicker();
+  maybeSelectInitial(); // ← NUEVO
+}
   function onPlayerState(){ populateRates(); }
 
   function populateRates(){
@@ -231,9 +252,14 @@ var LIB_FILE = '/api/library';    // lectura desde el API que ya funciona
       els.speed.appendChild(opt);
     }
   }
-  function cueById(videoId,start){ if(player) player.cueVideoById({videoId:videoId,startSeconds:start||0}); }
-  function loadById(videoId,start){ if(player) player.loadVideoById({videoId:videoId,startSeconds:start||0}); }
-
+  function cueById(videoId, start){
+  if(!player || typeof player.cueVideoById !== 'function') return;
+  player.cueVideoById({ videoId: videoId, startSeconds: start || 0 });
+}
+function loadById(videoId, start){
+  if(!player || typeof player.loadVideoById !== 'function') return;
+  player.loadVideoById({ videoId: videoId, startSeconds: start || 0 });
+}
   function startTicker(){
     if(timeTicker) clearInterval(timeTicker);
     timeTicker = setInterval(function(){
