@@ -181,20 +181,26 @@ var LIB_FILE = '/api/library';    // lectura desde el API que ya funciona
   };
 
   /* ====== Carga inicial desde el servidor ====== */
-  window.addEventListener('DOMContentLoaded', function(){
-    fetch(LIB_FILE, {cache:'no-store'})
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-      .then(function(data){
-        SONGS = Array.isArray(data) ? data : [];
-        setHint('servidor');
-        renderList('');
-        if(SONGS[0]) selectSong(SONGS[0].id);
-      })
-      .catch(function(){
-        alert('No se pudo leer library.json del servidor.');
-        setHint('error de lectura');
-      });
-  });
+ window.addEventListener('DOMContentLoaded', function(){
+  console.log('Cargando desde', LIB_FILE);
+  fetch(LIB_FILE, { cache: 'no-store' })
+    .then(async function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+      var data;
+      try { data = await r.json(); } catch(e) { data = []; } // si está vacío, iniciamos []
+      SONGS = Array.isArray(data) ? data : [];
+      setHint('servidor');
+      renderList('');
+      if (SONGS[0]) selectSong(SONGS[0].id);
+    })
+    .catch(function(err){
+      // No mostrar alert: no bloqueamos la UI y arrancamos vacío
+      console.error('Error cargando', LIB_FILE, err);
+      SONGS = [];
+      setHint('servidor (vacío)');
+      renderList('');
+    });
+});
 
   /* ====== YouTube API ====== */
   window.onYouTubeIframeAPIReady = function(){
